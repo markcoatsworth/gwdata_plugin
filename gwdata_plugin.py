@@ -122,11 +122,11 @@ class GWDataPlugin:
             if attr == "e": end_frame = value
 
         # Retrieve the list of URLs
-        conn = gwdatafind.connect(server)
         try:
+            conn = gwdatafind.connect(server)
             urls = conn.find_urls(observatory, type, int(start_frame), int(end_frame))
         except Exception as e:
-            print("Unexpected error " + sys.exc_info()[0] + ": " + str(e))
+            print("Error retrieving gwdatafind URLs: " + str(sys.exc_info()[0]) + ": " + str(e))
 
         return urls
 
