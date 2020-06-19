@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+import argparse
 import classad
 import gwdatafind
+import io
 import json
 import os
+import pathlib
 import posixpath
 import pycurl
 import shutil
@@ -109,7 +112,7 @@ class GWDataPlugin:
     def __init__(self):
         self.local_cache = "/tmp" # Not used yet, for later
 
-    def get_urls(self, server, args):
+    def get_urls(self, host, args):
 
         urls = []
         
@@ -123,12 +126,42 @@ class GWDataPlugin:
 
         # Retrieve the list of URLs
         try:
-            conn = gwdatafind.connect(server)
-            urls = conn.find_urls(observatory, type, int(start_frame), int(end_frame))
+            urls = gwdatafind.find_urls(
+                host=host,
+                site=observatory,
+                frametype=type,
+                gpsstart=int(start_frame),
+                gpsend=int(end_frame)
+            )
         except Exception as e:
             print("Error retrieving gwdatafind URLs: " + str(sys.exc_info()[0]) + ": " + str(e))
 
         return urls
+
+    def create_cache(self, args, urls):
+
+        metadata_filename = "metadata.txt"
+
+        # Parse the input arguments
+        for arg in args:
+            attr, value = arg.split("=")
+            if attr == "cache": cache = value
+            if attr == "metadata_file": metadata_filename = value
+
+        # TODO: Make this work for multiple cache types (this currently uses
+        # lal-cache syntax no matter what is specified)
+        metadata_file = open(metadata_filename, "w")
+        for url in urls:
+            file_name = url.split("/")[-1]
+            metadata_tokens = file_name.split("-")
+            metadata_file.write("{0} {1} {2} {3} {4}\n".format(
+                metadata_tokens[0], 
+                metadata_tokens[1],
+                metadata_tokens[2],
+                metadata_tokens[3].split(".")[0],
+                os.path.join(pathlib.Path().absolute(), file_name)
+            ))
+        metadata_file.close()
 
 
     def download_data(self, url):
@@ -139,23 +172,23 @@ class GWDataPlugin:
         gwdata_args = url[(url.find("?") + 1):].split("&")
 
         # First retrieve a list of urls to download from the gwdatafind server
-        urls = self.get_urls(gwdatafind_server, gwdata_args)
+        gwdata_urls = self.get_urls(gwdatafind_server, gwdata_args)
 
         # Now transfer each url
         curl = pycurl.Curl()
-        for url in urls:
+        for gwdata_url in gwdata_urls:
 
             start_time = time.time()
 
             # Setup the transfer
             transfer_success = True
             transfer_error = ""
-            file_name = url.split("/")[-1]
+            file_name = gwdata_url.split("/")[-1]
             file_size = 0
             file = open(file_name, "wb")
 
             # Use pycurl to actually grab the file
-            curl.setopt(curl.URL, url)
+            curl.setopt(curl.URL, gwdata_url)
             curl.setopt(curl.WRITEDATA, file)
             try:
                 curl.perform()
@@ -179,7 +212,7 @@ class GWDataPlugin:
                 'TransferStartTime': int(start_time),
                 'TransferEndTime': int(end_time),
                 'ConnectionTimeSeconds': end_time - start_time,
-                'TransferUrl': url,
+                'TransferUrl': gwdata_url,
             }
             if transfer_error:
                 this_transfer_stats['TransferError'] = transfer_error
@@ -190,6 +223,10 @@ class GWDataPlugin:
             if not transfer_success:
                 curl.close()
                 return transfer_stats, False
+
+        # Check if the args list is requesting a cache file; if so, create it
+        if "cache" in url:
+            self.create_cache(gwdata_args, gwdata_urls)
 
         # Looks like everything downloaded correctly. Exit success.
         curl.close()

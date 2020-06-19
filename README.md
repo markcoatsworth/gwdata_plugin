@@ -8,8 +8,8 @@ a list of urls of Gravitational-Wave Frame (GWF) files, then uses
 To use this plugin, simply drop the `gwdata_plugin.py` file in the same 
 directory as your HTCondor job submission files. 
 
-Your `transfer_input_files` line should be a URL with the `gwdata://` prefix
-and the following format:
+Your `transfer_input_files` line should include a URL with the `gwdata://`
+prefix and the following format:
 
     gwdata://<gwdatafind-server-host>?observatory=<...>&type=<...>&s=<###>&e=<###>
 
