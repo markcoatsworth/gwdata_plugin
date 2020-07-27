@@ -13,8 +13,17 @@ prefix and the following format:
 
     gwdata://<gwdatafind-server-host>?observatory=<...>&type=<...>&s=<###>&e=<###>
 
-You also need to include the following line so that HTCondor knows to use this 
-plugin for `gwdata://` URLs:
+This URL supports the following arguments:
+
+* ``observatory``: Single-character name of the site / observatory to match.
+* ``type``: Name of frame type to match
+* ``s``: Integer GPS start time of query
+* ``e``: Integer GPS end time of query
+* ``metadata_file``: If metadata was requsted, name of the output file. Defaults to ``metadata.txt``.
+* ``cache``: Metadata cache type. Possible values are ``lal``, ``lal-cache``, ``frame``, ``frame-cache``
+
+You also need to include the following line in your job submit file so that 
+HTCondor knows to use this plugin for `gwdata://` URLs:
 
     transfer_plugins = gwdata=gwdata_plugin.py
 
@@ -30,7 +39,6 @@ An example submit file might look like:
     queue
 
 ## Requirements
-
 The HTCondor execute node that runs this plugin requires the following:
 
 * Python 3

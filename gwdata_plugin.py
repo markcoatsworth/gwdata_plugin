@@ -109,13 +109,12 @@ def get_error_dict(error, url = ''):
 
 class GWDataPlugin:
 
-    def __init__(self):
-        self.local_cache = "/tmp" # Not used yet, for later
+    #def __init__(self):
 
     def get_urls(self, host, args):
 
         urls = []
-        
+
         # Parse the input arguments
         for arg in args:
             attr, value = arg.split("=")
@@ -145,22 +144,59 @@ class GWDataPlugin:
         # Parse the input arguments
         for arg in args:
             attr, value = arg.split("=")
+            if attr == "e": end_frame = int(value)
             if attr == "cache": cache = value
             if attr == "metadata_file": metadata_filename = value
 
-        # TODO: Make this work for multiple cache types (this currently uses
-        # lal-cache syntax no matter what is specified)
         metadata_file = open(metadata_filename, "w")
-        for url in urls:
-            file_name = url.split("/")[-1]
-            metadata_tokens = file_name.split("-")
-            metadata_file.write("{0} {1} {2} {3} {4}\n".format(
-                metadata_tokens[0], 
-                metadata_tokens[1],
-                metadata_tokens[2],
-                metadata_tokens[3].split(".")[0],
-                os.path.join(pathlib.Path().absolute(), file_name)
-            ))
+
+        if cache == "lal" or cache == "lal-cache":
+            for url in urls:
+                file_name = url.split("/")[-1]
+                metadata_tokens = file_name.split("-")
+                metadata_file.write("{0} {1} {2} {3} {4}\n".format(
+                    metadata_tokens[0],
+                    metadata_tokens[1],
+                    metadata_tokens[2],
+                    metadata_tokens[3].split(".")[0],
+                    pathlib.Path().absolute()
+                ))
+        elif cache == "frame" or cache == "frame-cache":
+            for url in urls:
+
+                # Filename and metadata specific to this url
+                file_name = url.split("/")[-1]
+                metadata_tokens = file_name.split("-")
+
+                # If this is the first url in the list, set a couple gps tracking variables
+                if url == urls[0]:
+                    gps_start = int(metadata_tokens[2])
+                    gps_counter = gps_start
+                else:
+                    gps_current = int(metadata_tokens[2])
+                    gps_interval = int(metadata_tokens[3].split(".")[0])
+                    gps_counter += gps_interval
+
+                    # If this url represents a gap, write data to file
+                    if (gps_current != gps_counter) or (url == urls[-1]):
+                        gps_end = gps_counter
+                        if url == urls[-1]:
+                            gps_end = end_frame
+
+                        metadata_file.write("{0} {1} {2} {3} {4} {5}\n".format(
+                            metadata_tokens[0],
+                            metadata_tokens[1],
+                            gps_start,
+                            gps_end,
+                            gps_interval,
+                            pathlib.Path().absolute()
+                        ))
+                        # Now reset reset gps tracking variables
+                        gps_start = gps_current
+                        gps_counter = gps_start
+        else:
+            metadata_file.write("Error: {0} is not a valid cache type. Allowed types are \"lal\", \"lal-cache\", \"frame\" and \"frame-cache\".\n".format(cache))
+
         metadata_file.close()
 
 
@@ -227,6 +263,7 @@ class GWDataPlugin:
         # Check if the args list is requesting a cache file; if so, create it
         if "cache" in url:
             self.create_cache(gwdata_args, gwdata_urls)
+
 
         # Looks like everything downloaded correctly. Exit success.
         curl.close()
