@@ -14,10 +14,7 @@ import socket
 import sys
 import time
 
-try:
-    from urllib.parse import urlparse # Python 3
-except ImportError:
-    from urlparse import urlparse # Python 2
+from urllib.parse import urlparse
 
 DEFAULT_TIMEOUT = 30
 GWDATA_PLUGIN_VERSION = '1.0.0'
@@ -31,7 +28,6 @@ Options:
                               file transfer plugin.
   -infile <input-filename>    Input ClassAd file
   -outfile <output-filename>  Output ClassAd file
-  -upload                     Not supported
 '''
     stream.write(help_msg.format(sys.argv[0]))
 
@@ -45,54 +41,31 @@ def print_capabilities():
     sys.stdout.write(classad.ClassAd(capabilities).printOld())
 
 def parse_args():
-    '''The optparse library can't handle the types of arguments that the file
-    transfer plugin sends, the argparse library can't be expected to be
-    found on machines running EL 6 (Python 2.6), and a plugin should not
-    reach outside the standard library, so the plugin must roll its own argument
-    parser. The expected input is very rigid, so this isn't too awful.'''
 
-    # The only argument lists that are acceptable are
+    # The only arguments that are acceptable are
     # <this> -classad
     # <this> -infile <input-filename> -outfile <output-filename>
     # <this> -outfile <output-filename> -infile <input-filename>
-    if not len(sys.argv) in [2, 5, 6]:
+
+    if not len(sys.argv) in [2, 5]:
         print_help()
         sys.exit(-1)
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-classad", action="store_true",
+        help="Output classad of options supported by this transfer plugin")
+    parser.add_argument("-infile", type=str, action="store",
+        help="Input file of classads describing files to transfer")
+    parser.add_argument("-outfile", type=str, action="store",
+        help="Output file of classads describing file transfer results")
+    args = parser.parse_args()
+
     # If -classad, print the capabilities of the plugin and exit early
-    if (len(sys.argv) == 2) and (sys.argv[1] == '-classad'):
+    if (args.classad):
         print_capabilities()
         sys.exit(0)
 
-    # Upload is not supported
-    if '-upload' in sys.argv[1:]:
-        print("Upload is not supported. You should not be seeing this.")
-        sys.exit(-1)
-
-    # -infile and -outfile must be in the first and third position
-    if not (
-            ('-infile' in sys.argv[1:]) and
-            ('-outfile' in sys.argv[1:]) and
-            (sys.argv[1] in ['-infile', '-outfile']) and
-            (sys.argv[3] in ['-infile', '-outfile']) and
-            (len(sys.argv) == 5)):
-        print_help()
-        sys.exit(-1)
-    infile = None
-    outfile = None
-    try:
-        for i, arg in enumerate(sys.argv):
-            if i == 0:
-                continue
-            elif arg == '-infile':
-                infile = sys.argv[i+1]
-            elif arg == '-outfile':
-                outfile = sys.argv[i+1]
-    except IndexError:
-        print_help()
-        sys.exit(-1)
-
-    return {'infile': infile, 'outfile': outfile}
+    return {'infile': args.infile, 'outfile': args.outfile}
 
 def format_error(error):
     return '{0}: {1}'.format(type(error).__name__, str(error))
@@ -109,7 +82,8 @@ def get_error_dict(error, url = ''):
 
 class GWDataPlugin:
 
-    #def __init__(self):
+    def __init__(self, outfile):
+        self.outfile = outfile
 
     def get_urls(self, host, args):
 
@@ -122,6 +96,15 @@ class GWDataPlugin:
             if attr == "type": type = value
             if attr == "s": start_frame = value
             if attr == "e": end_frame = value
+
+        # If any input arguments are missing, report error and exit
+        try:
+            observatory, type, end_frame, start_frame
+        except NameError:
+            with open(self.outfile, 'w') as outfile:
+                outfile_dict = get_error_dict(str("gwdata:// urls must include arguments 'observatory', 'type', 's' (start frame), 'e' (end frame)"))
+                outfile.write(str(classad.ClassAd(outfile_dict)))
+                sys.exit(-1)
 
         # Retrieve the list of URLs
         try:
@@ -279,7 +262,7 @@ if __name__ == '__main__':
     except Exception:
         sys.exit(-1)
 
-    gwdata = GWDataPlugin()
+    gwdata = GWDataPlugin(args['outfile'])
 
     # Parse in the classads stored in the input file. 
     # Each ad represents a single file to be transferred.
