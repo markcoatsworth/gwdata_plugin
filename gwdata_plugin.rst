@@ -55,7 +55,11 @@ Requirements
 
 The HTCondor execute node that runs this plugin requires the following:
 
+* HTCondor 8.8+
 * Python 3
 * Python `gwdatafind <https://github.com/duncanmmacleod/gwdatafind>`_ module
 * Python `pycurl <http://pycurl.io/>`_ module
 
+The HTCondor submit machine sending this plugin with a job requires the following:
+
+* HTCondor 8.9.2+

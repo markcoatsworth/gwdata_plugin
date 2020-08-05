@@ -41,6 +41,11 @@ An example submit file might look like:
 ## Requirements
 The HTCondor execute node that runs this plugin requires the following:
 
+* HTCondor 8.8+
 * Python 3
 * Python gwdatafind module
 * Python pycurl module
+
+The HTCondor submit machine sending this plugin with a job requires the following:
+
+* HTCondor 8.9.2+
