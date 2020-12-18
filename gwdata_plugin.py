@@ -11,6 +11,15 @@ import time
 DEFAULT_TIMEOUT = 30
 GWDATA_PLUGIN_VERSION = '1.0.0'
 
+# Added to prevent the flush() behavior on exit as indicated by 
+# https://bugs.python.org/issue29130
+class NullWriter:
+    def write(self, s): pass
+    def flush(self): pass
+
+sys.stderr = NullWriter()
+sys.stdout = NullWriter()
+
 
 def print_help(stream=sys.stderr):
     help_msg = '''Usage: {0} -infile <input-filename> -outfile <output-filename>
@@ -66,12 +75,7 @@ def parse_args():
     return {'infile': args.infile, 'outfile': args.outfile}
 
 
-def format_error(error):
-    return '{0}: {1}'.format(type(error).__name__, str(error))
-
-
-def get_error_dict(error, url=''):
-    error_string = format_error(error)
+def get_error_dict(error_string, url=''):
     error_dict = {
         'TransferSuccess': False,
         'TransferError': error_string,
@@ -83,8 +87,8 @@ def get_error_dict(error, url=''):
 
 class GWDataPlugin:
 
-    def __init__(self, outfile):
-        self.outfile = outfile
+    def __init__(self, outfile_path):
+        self.outfile_path = outfile_path
 
     def get_urls(self, host, args):
 
@@ -107,10 +111,8 @@ class GWDataPlugin:
             observatory, type, end_frame, start_frame
         except NameError:
             with open(self.outfile, 'w') as outfile:
-                outfile_dict = get_error_dict(
-                    str("gwdata:// urls must include arguments 'observatory', "
-                        "'type', 's' (start frame), 'e' (end frame)")
-                )
+                outfile_dict = get_error_dict("gwdata:// urls must include arguments 'observatory', 'type', 's' (start frame), 'e' (end frame)")
+                outfile = open(self.outfile_path, 'w')
                 outfile.write(str(classad.ClassAd(outfile_dict)))
                 sys.exit(-1)
 
@@ -124,9 +126,10 @@ class GWDataPlugin:
                 gpsend=int(end_frame)
             )
         except Exception as e:
-            print("Error retrieving gwdatafind URLs: {} ({})".format(
-                str(sys.exc_info()[0]), str(e)
-            ))
+            outfile_dict = get_error_dict(f"Error retrieving gwdatafind URLs: {sys.exc_info()[0]} ({e})")
+            outfile = open(self.outfile_path, 'w')
+            outfile.write(str(classad.ClassAd(outfile_dict)))
+            sys.exit(-1)
 
         return urls
 
@@ -233,6 +236,10 @@ class GWDataPlugin:
                 transfer_success = False
                 errno, errstr = error.args
                 transfer_error = str(errstr + " (Error " + str(errno) + ")")
+                outfile_dict = get_error_dict(transfer_error)
+                outfile = open(self.outfile_path, 'w')
+                outfile.write(str(classad.ClassAd(outfile_dict)))
+                sys.exit(-1)
 
             end_time = time.time()
 
@@ -285,7 +292,7 @@ if __name__ == '__main__':
     except Exception as err:
         try:
             with open(args['outfile'], 'w') as outfile:
-                outfile_dict = get_error_dict(err)
+                outfile_dict = get_error_dict(str(err))
                 outfile.write(str(classad.ClassAd(outfile_dict)))
         except Exception:
             pass
@@ -300,20 +307,22 @@ if __name__ == '__main__':
                         ad['Url']
                     )
                     # Output the results to file
-                    for ad in result_ads:
-                        outfile.write(str(classad.ClassAd(ad)))
+                    for result in result_ads:
+                        outfile.write(str(classad.ClassAd(result)))
 
                     if not transfer_success:
+                        outfile_dict = get_error_dict("Failed to download data", url=ad['Url'])
+                        outfile.write(str(classad.ClassAd(outfile_dict)))
                         sys.exit(-1)
 
                 except Exception as err:
                     print(err)
-                    try:
-                        outfile_dict = get_error_dict(err, url=ad['Url'])
-                        outfile.write(str(classad.ClassAd(outfile_dict)))
-                    except Exception:
-                        pass
+                    outfile_dict = get_error_dict(str(err), url=ad['Url'])
+                    outfile.write(str(classad.ClassAd(outfile_dict)))
                     sys.exit(-1)
 
-    except Exception:
+    except Exception as err:
+        outfile = open(args['outfile'], 'w')
+        outfile_dict = get_error_dict(str(err))
+        outfile.write(str(classad.ClassAd(outfile_dict)))
         sys.exit(-1)
